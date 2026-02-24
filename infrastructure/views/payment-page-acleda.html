@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/static/lp/css/mdb.dark.min.css" />
+    <link rel="stylesheet" href="/static/lp/style.css" />
+    <title>Acleda</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      form {
+        width: 50%;
+        padding: 25px;
+        margin: 100px auto;
+        background: #eeeeee;
+        box-sizing: border-box;
+        border-radius: 5px;
+      }
+      input[type="text"] {
+        display: block;
+        margin: 0 auto;
+        width: 100%;
+        margin: 15px 0;
+        appearance: none;
+        -webkit-appearance: none;
+        border: 1px solid #333;
+        border-radius: 5px;
+        padding: 10px;
+        box-sizing: border-box;
+      }
+      input[type="submit"] {
+        display: block;
+        margin: 25px auto 0;
+        color: #333333;
+        background: #eeeeee;
+        border: 1px solid #333;
+        border-radius: 5px;
+        -webkit-appearance: none;
+        min-width: 150px;
+        padding: 10px;
+        cursor: pointer;
+        box-shadow: 1px 1px 120px rgba(0, 0, 0, 1);
+      }
+      input[type="submit"]:hover {
+        color: #eeeeee;
+        background: #333333;
+        box-shadow: none;
+      }
+    </style>
+  </head>
+  <body style="background-color: white; color: black">
+    <form
+      id="_xpayTestForm"
+      name="_xpayTestForm"
+      action="https://epaymentuat.acledabank.com.kh/LINKIT360SOLUTION/paymentPage.jsp"
+      method="post"
+      style="display: none"
+    >
+      <input
+        type="hidden"
+        id="merchantID"
+        name="merchantID"
+        value="{{.merchant_id}}"
+      />
+      <input type="hidden" id="sessionid" name="sessionid" value="{{.sid}}" />
+      <input
+        type="hidden"
+        id="paymenttokenid"
+        name="paymenttokenid"
+        value="{{.ptid}}"
+      />
+      <input type="hidden" id="description" name="description" value="{{.desc}}" />
+      <input type="hidden" id="expirytime" name="expirytime" value="60" />
+      <input type="hidden" id="amount" name="amount" value="{{.amount}}" />
+      <input type="hidden" id="quantity" name="quantity" value="1" />
+      <input type="hidden" id="item" name="item" value="1" />
+      <input type="hidden" id="invoiceid" name="invoiceid" value="{{.invoice_id}}" />
+      <input
+        type="hidden"
+        id="currencytype"
+        name="currencytype"
+        value="{{.currency}}"
+      />
+      <input
+        type="hidden"
+        id="transactionID"
+        name="transactionID"
+        value="{{.invoice_id}}"
+      />
+      <input
+        type="hidden"
+        id="successUrlToReturn"
+        name="successUrlToReturn"
+        value="{{.return_url}}"
+      />
+      <input type="hidden" id="errorUrl" name="errorUrl" value="{{.error_url}}" />
+      <input type="submit" value="Submit" />
+    </form>
+  </body>
+  <script
+    src="https://code.jquery.com/jquery-3.6.0.min.js"
+    integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4="
+    crossorigin="anonymous"
+  ></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script>
+    $(document).ready(function () {
+      let ptid = "{{.ptid}}"
+      console.log(ptid)
+      function disableBack() {
+        window.history.forward();
+      }
+      window.onload = disableBack();
+      window.onpageshow = function (evt) {
+        if (evt.persisted) disableBack();
+      };
+
+      // setTimeout(() => {
+      //   document.getElementById("_xpayTestForm").submit();
+      // }, 500);
+    });
+  </script>
+  <script src="/static/lp/js/mdb.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</html>
