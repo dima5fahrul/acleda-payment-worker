@@ -54,7 +54,7 @@ func InitializeYugabyteDB() {
 		END $$;
 	`)
 
-	isMigration := false
+	isMigration := true
 	if isMigration {
 		if err := YugabyteDBClient.AutoMigrate(
 			&models.EWalletProvidersDataModel{},

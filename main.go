@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"strconv"
+	"time"
 
 	"payment-airpay/infrastructure/configuration"
 	"payment-airpay/infrastructure/controllers"
@@ -10,10 +11,12 @@ import (
 	"payment-airpay/infrastructure/database/clients"
 	"payment-airpay/infrastructure/database/repositories"
 	"payment-airpay/infrastructure/dependencies"
+	"payment-airpay/infrastructure/middleware"
 	"payment-airpay/infrastructure/publishers"
 	"payment-airpay/infrastructure/queue"
 	"payment-airpay/infrastructure/workers"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/template/html/v2"
 )
@@ -62,17 +65,20 @@ func main() {
 	acledaService := dependencies.ProvidePaymentAcledaService()
 	stagingService := dependencies.ProvideAcledaStagingService()
 
-	// Initialize Acleda controller
 	acledaController := controllers.NewAcledaController(
 		dependencies.ProvideAcledaGateway(),
 		acledaService,
 		repositories.NewPaymentAcledaRepositoryYugabyteDB(yugabyteClient),
+		resty.New().SetTimeout(60*time.Second),
 	)
 
 	// Initialize Acleda Staging controller
 	acledaStagingController := controllers.NewAcledaStagingController(
 		stagingService,
 	)
+
+	m := middleware.Middlewares{}
+	app.Use(m.Incoming())
 
 	// Register routes
 	app.Post("/payment/acleda", workers.PaymentHandler)

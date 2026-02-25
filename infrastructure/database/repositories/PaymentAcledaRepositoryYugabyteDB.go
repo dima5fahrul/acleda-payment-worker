@@ -62,6 +62,7 @@ func (r *PaymentAcledaRepositoryYugabyteDB) GetByTransactionID(ctx context.Conte
 	var model models.PaymentAcledaPaymentLinksDataModel
 	err := r.db.GetDB().WithContext(ctx).Where("transaction_id = ?", transactionID).First(&model).Error
 	if err != nil {
+
 		return nil, err
 	}
 

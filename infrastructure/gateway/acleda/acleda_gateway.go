@@ -4,14 +4,39 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"payment-airpay/domain/entities"
 	"payment-airpay/infrastructure/configuration"
+	"payment-airpay/infrastructure/gateway"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 )
+
+type OpenSessionV2RequestDto struct {
+	LoginID         string             `json:"loginId" binding:"required"`
+	Password        string             `json:"password" binding:"required"`
+	MerchantID      string             `json:"merchantID" binding:"required"`
+	Signature       string             `json:"signature" binding:"required"`
+	XPayTransaction XPayTransactionDTO `json:"xpayTransaction" binding:"required"`
+}
+
+type XPayTransactionDTO struct {
+	TxID             string `json:"txid" binding:"required"`
+	PurchaseAmount   string `json:"purchaseAmount" binding:"required"`
+	PurchaseCurrency string `json:"purchaseCurrency" binding:"required"`
+	PurchaseDate     string `json:"purchaseDate" binding:"required"`
+	PurchaseDesc     string `json:"purchaseDesc" binding:"required"`
+	InvoiceID        string `json:"invoiceid" binding:"required"`
+	Item             string `json:"item" binding:"required"`
+	Quantity         string `json:"quantity" binding:"required"`
+	ExpiryTime       int    `json:"expiryTime" binding:"required"`
+}
 
 type AcledaGateway struct {
 	baseURL    string
@@ -143,6 +168,48 @@ func (g *AcledaGateway) GetPaymentStatus(ctx context.Context, req PaymentStatusR
 	}
 
 	return &response, nil
+}
+
+func (g *AcledaGateway) OpenSessionV2(ctx context.Context, client *resty.Client, url string, param OpenSessionV2RequestDto) (OpenSessionV2ResponseDTO, error) {
+	var response OpenSessionV2ResponseDTO
+	queries, _ := json.Marshal(param)
+
+	resp, err := client.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(param).
+		Post(url)
+
+	reqHeaders, _ := json.Marshal(resp.Request.Header)
+	respHeaders, _ := json.Marshal(resp.Header())
+
+	response.RequestAPICallResult.RequestURL = url
+	response.RequestAPICallResult.Method = resp.Request.RawRequest.Method
+	response.RequestAPICallResult.RequestLatency = resp.Time().String()
+	response.RequestAPICallResult.RequestBody = string(queries)
+	response.RequestAPICallResult.ResponseBody = string(resp.Body())
+	response.RequestAPICallResult.RequestHeaders = string(reqHeaders)
+	response.RequestAPICallResult.ResponseHeaders = string(respHeaders)
+	response.RequestAPICallResult.ResponseStatusCode = resp.StatusCode()
+
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "excedeed") {
+			return response, errors.New("timeout")
+		} else {
+			return response, err
+		}
+	}
+
+	err = json.Unmarshal(resp.Body(), &response)
+	if err != nil {
+		return response, err
+	}
+
+	if response.Result.ErrorDetails != "SUCCESS" {
+		return response, fmt.Errorf(response.Result.ErrorDetails)
+	}
+
+	return response, nil
+
 }
 
 // OpenSession implements Acleda session opening
@@ -328,6 +395,28 @@ type StagingPaymentResponse struct {
 	Status        string  `json:"status"`
 }
 
+type XTranDTO struct {
+	PurchaseAmount float64 `json:"purchaseAmount" binding:"required"`
+	PurchaseDate   int64   `json:"purchaseDate" binding:"required"`
+	Quantity       int     `json:"quantity" binding:"required"`
+	PaymentTokenID string  `json:"paymentTokenid" binding:"required"`
+	ExpiryTime     int     `json:"expiryTime" binding:"required"`
+	ConfirmDate    int64   `json:"confirmDate" binding:"required"`
+	PurchaseType   int     `json:"purchaseType" binding:"required"`
+	SaveToken      int     `json:"savetoken" binding:"required"`
+	FeeAmount      float64 `json:"feeAmount" binding:"required"`
+}
+
+type OpenSessionV2ResponseDTO struct {
+	Result ResultDTO `json:"result" binding:"required"`
+
+	RequestAPICallResult gateway.RequestAPICallResult `json:"-"`
+}
+
+func (s *OpenSessionV2ResponseDTO) GetAPICall() gateway.RequestAPICallResult {
+	return s.RequestAPICallResult
+}
+
 // Request structures for OpenSession
 type OpenSessionRequest struct {
 	LoginID         string          `json:"loginId"`
@@ -360,18 +449,6 @@ type ResultDTO struct {
 	SessionID    string   `json:"sessionid"`
 	XTran        XTranDTO `json:"xTran"`
 	TxDirection  int      `json:"TxDirection"`
-}
-
-type XTranDTO struct {
-	PurchaseAmount float64 `json:"purchaseAmount"`
-	PurchaseDate   int64   `json:"purchaseDate"`
-	Quantity       int     `json:"quantity"`
-	PaymentTokenID string  `json:"paymentTokenid"`
-	ExpiryTime     int     `json:"expiryTime"`
-	ConfirmDate    int64   `json:"confirmDate"`
-	PurchaseType   int     `json:"purchaseType"`
-	SaveToken      int     `json:"savetoken"`
-	FeeAmount      float64 `json:"feeAmount"`
 }
 
 // Helper functions

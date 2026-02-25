@@ -74,7 +74,7 @@
         value="{{.ptid}}"
       />
       <input type="hidden" id="description" name="description" value="{{.desc}}" />
-      <input type="hidden" id="expirytime" name="expirytime" value="60" />
+      <input type="hidden" id="expirytime" name="expirytime" value="{{.expired_time}}" />
       <input type="hidden" id="amount" name="amount" value="{{.amount}}" />
       <input type="hidden" id="quantity" name="quantity" value="1" />
       <input type="hidden" id="item" name="item" value="1" />
@@ -119,9 +119,9 @@
         if (evt.persisted) disableBack();
       };
 
-      // setTimeout(() => {
-      //   document.getElementById("_xpayTestForm").submit();
-      // }, 500);
+       setTimeout(() => {
+        document.getElementById("_xpayTestForm").submit();
+       }, 500);
     });
   </script>
   <script src="/static/lp/js/mdb.min.js"></script>

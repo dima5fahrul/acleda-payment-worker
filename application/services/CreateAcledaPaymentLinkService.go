@@ -9,27 +9,31 @@ import (
 	"time"
 
 	"payment-airpay/domain/entities"
+	"payment-airpay/infrastructure/configuration"
 	"payment-airpay/infrastructure/database/repositories"
 	"payment-airpay/infrastructure/gateway/acleda"
 	"payment-airpay/infrastructure/service"
+
+	"github.com/go-resty/resty/v2"
 )
 
 type CreateAcledaPaymentLinkService struct {
 	gateway *acleda.AcledaGateway
 	service *service.PaymentAcleda
 	repo    *repositories.PaymentAcledaRepositoryYugabyteDB
+	Client  *resty.Client
 }
 
 type CreateAcledaPaymentLinkInput struct {
 	Amount        string `json:"amount" validate:"required"`
 	Currency      string `json:"currency" validate:"required"`
-	Description   string `json:"description"`
-	CustomerName  string `json:"customer_name"`
-	CustomerEmail string `json:"customer_email"`
-	CustomerPhone string `json:"customer_phone"`
-	ReturnURL     string `json:"return_url"`
-	CallbackURL   string `json:"callback_url"`
-	Merchant      string `json:"merchant" validate:"required"`
+	Description   string `json:"description" validate:"required"`
+	CustomerName  string `json:"customer_name" validate:"required"`
+	CustomerEmail string `json:"customer_email" validate:"required"`
+	CustomerPhone string `json:"customer_phone" validate:"required"`
+	ReturnURL     string `json:"return_url" validate:"required"`
+	CallbackURL   string `json:"callback_url" validate:"required"`
+	ExpiredTime   int    `json:"expired_time" validate:"required"`
 }
 
 type CreateAcledaPaymentLinkOutput struct {
@@ -44,16 +48,21 @@ type CreateAcledaPaymentLinkOutput struct {
 	CreatedAt      string `json:"created_at"`
 }
 
-func NewCreateAcledaPaymentLinkService(gateway *acleda.AcledaGateway, service *service.PaymentAcleda, repo *repositories.PaymentAcledaRepositoryYugabyteDB) *CreateAcledaPaymentLinkService {
+func NewCreateAcledaPaymentLinkService(
+	gateway *acleda.AcledaGateway,
+	service *service.PaymentAcleda,
+	repo *repositories.PaymentAcledaRepositoryYugabyteDB,
+	client *resty.Client,
+) *CreateAcledaPaymentLinkService {
 	return &CreateAcledaPaymentLinkService{
 		gateway: gateway,
 		service: service,
 		repo:    repo,
+		Client:  client,
 	}
 }
 
-func (s *CreateAcledaPaymentLinkService) Execute(ctx context.Context, in CreateAcledaPaymentLinkInput) (*CreateAcledaPaymentLinkOutput, error) {
-	log.Printf("Creating Acleda payment link for merchant: %s", in.Merchant)
+func (s *CreateAcledaPaymentLinkService) Execute(ctx context.Context, in CreateAcledaPaymentLinkInput, incoming entities.Incoming) (*CreateAcledaPaymentLinkOutput, error) {
 
 	// Validate input
 	if in.Amount == "" {
@@ -62,31 +71,41 @@ func (s *CreateAcledaPaymentLinkService) Execute(ctx context.Context, in CreateA
 	if in.Currency == "" {
 		return nil, fmt.Errorf("currency is required")
 	}
-	if in.Merchant == "" {
-		return nil, fmt.Errorf("merchant is required")
+
+	if in.ReturnURL == "" {
+		return nil, fmt.Errorf("return url is required")
+
+	}
+
+	if in.CallbackURL == "" {
+		return nil, fmt.Errorf("callback url is required")
+
 	}
 
 	// Generate transaction ID
 	transactionID := fmt.Sprintf("ACL-%d", time.Now().Unix())
 
 	// Step 1: Open Session with Acleda
-	sessionResp, err := s.gateway.OpenSession(ctx, acleda.OpenSessionRequest{
-		LoginID:    "acleda_login",
-		Password:   "acleda_password",
-		MerchantID: in.Merchant,
-		Signature:  "acleda_signature",
-		XPayTransaction: acleda.XPayTransaction{
+	sessionResp, err := s.gateway.OpenSessionV2(ctx, s.Client, configuration.AppConfig.ACLEDAOPENSESSIONV2URL, acleda.OpenSessionV2RequestDto{
+		LoginID:    configuration.AppConfig.AcledaLogin,
+		Password:   configuration.AppConfig.AcledaRemotePassword,
+		MerchantID: configuration.AppConfig.AcledaMerchantID,
+		Signature:  configuration.AppConfig.AcledaSecret,
+		XPayTransaction: acleda.XPayTransactionDTO{
 			TxID:             transactionID,
 			PurchaseAmount:   in.Amount,
 			PurchaseCurrency: in.Currency,
-			PurchaseDate:     time.Now().Format("2006-01-02"),
+			PurchaseDate:     time.Now().Format(time.DateOnly),
 			PurchaseDesc:     in.Description,
 			InvoiceID:        transactionID,
 			Item:             "1",
 			Quantity:         "1",
-			ExpiryTime:       "60",
+			ExpiryTime:       in.ExpiredTime,
 		},
 	})
+
+	go SaveAPICall(context.Background(), &sessionResp, incoming.Merchant, err, "acleda", incoming.Path, in.CustomerPhone, incoming.Webtype, incoming.TransactionID)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to open session: %w", err)
 	}
@@ -95,22 +114,9 @@ func (s *CreateAcledaPaymentLinkService) Execute(ctx context.Context, in CreateA
 		return nil, fmt.Errorf("session failed: %s", sessionResp.Result.ErrorDetails)
 	}
 
-	// Step 2: Save to database
-	// Set default URLs if empty
-	defaultReturnURL := "https://www.google.com/"
-	defaultErrorURL := "https://www.google.com/"
-
-	if in.ReturnURL == "" {
-		in.ReturnURL = defaultReturnURL
-	}
-	if in.CallbackURL == "" {
-		in.CallbackURL = defaultErrorURL
-	}
-
 	paymentLinkEntity := entities.PaymentAcledaPaymentLink{
 		ID:             transactionID,
 		TransactionID:  transactionID,
-		MerchantID:     in.Merchant,
 		SessionID:      sessionResp.Result.SessionID,
 		PaymentTokenID: sessionResp.Result.XTran.PaymentTokenID,
 		Description:    in.Description,
@@ -118,7 +124,7 @@ func (s *CreateAcledaPaymentLinkService) Execute(ctx context.Context, in CreateA
 		Currency:       in.Currency,
 		InvoiceID:      transactionID,
 		Status:         "PENDING",
-		ExpiryTime:     60,
+		ExpiryTime:     in.ExpiredTime,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 		PurchaseAmount: sessionResp.Result.XTran.PurchaseAmount,
@@ -149,10 +155,7 @@ func (s *CreateAcledaPaymentLinkService) Execute(ctx context.Context, in CreateA
 	}
 
 	// Step 4: Generate payment URL
-	paymentURL := fmt.Sprintf("http://localhost:8080/payment-page/acleda/%s?sid=%s&ptid=%s",
-		transactionID, sessionResp.Result.SessionID, sessionResp.Result.XTran.PaymentTokenID)
-
-	fmt.Println(paymentURL)
+	paymentURL := fmt.Sprintf("%s/payment-page/acleda/%s?sid=%s&ptid=%s", configuration.AppConfig.AcledaBaseURL, transactionID, sessionResp.Result.SessionID, sessionResp.Result.XTran.PaymentTokenID)
 
 	// Step 5: Return response
 	out := &CreateAcledaPaymentLinkOutput{
