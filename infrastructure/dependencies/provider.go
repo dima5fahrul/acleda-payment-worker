@@ -16,6 +16,7 @@ import (
 // singleton
 var gatewayOnce sync.Once
 var transactionServiceOnce sync.Once
+var stagingServiceOnce sync.Once
 var publisherOnce sync.Once
 var yugabyteClientOnce sync.Once
 var masterDataRepoOnce sync.Once
@@ -25,6 +26,7 @@ var acledaRepoOnce sync.Once
 // singleton instance
 var acledaGatewayInstance *acleda.AcledaGateway
 var transactionServiceInstance *service.PaymentAcleda
+var stagingServiceInstance *services.CreateAcledaStagingPaymentService
 var publisherInstance *publishers.PublisherLog
 var yugabyteClientInstance *connectors.YugabyteConnector
 var masterDataRepoInstance *repositories.MasterDataRepositoryYugabyteDB
@@ -34,6 +36,7 @@ var acledaRepoInstance *repositories.AcledaRepositoryYugabyteDB
 var ProviderSet wire.ProviderSet = wire.NewSet(
 	ProvideAcledaGateway,
 	ProvideTransactionService,
+	ProvideAcledaStagingService,
 	ProvideYugabyteClient,
 	ProvideMasterDataRepository,
 	ProvidePaymentRepository,
@@ -88,6 +91,14 @@ func ProvideAcledaRepository() *repositories.AcledaRepositoryYugabyteDB {
 		acledaRepoInstance = repositories.NewAcledaRepositoryYugabyteDB()
 	})
 	return acledaRepoInstance
+}
+
+func ProvideAcledaStagingService() *services.CreateAcledaStagingPaymentService {
+	stagingServiceOnce.Do(func() {
+		gateway := ProvideAcledaGateway()
+		stagingServiceInstance = services.NewCreateAcledaStagingPaymentService(gateway)
+	})
+	return stagingServiceInstance
 }
 
 func ProvidePaymentAcledaService() *service.PaymentAcleda {

@@ -5,26 +5,29 @@ import "github.com/spf13/viper"
 var AppConfig *appConfig
 
 type appConfig struct {
-	ApplicationPort  int
-	ApplicationName  string
-	ServiceName      string
-	Environment      string
-	AcledaAPIURL     string
-	AcledaAPIKey     string
-	AcledaMerchantID string
-	AcledaLogin      string
-	AcledaPassword   string
-	AcledaTimeout    int // in milliseconds
-	RedisHost        string
-	RedisPort        int
-	RedisPassword    string
-	RedisDatabase    int
-	YugabyteHost     string
-	YugabytePort     int
-	YugabyteUsername string
-	YugabytePassword string
-	YugabyteDatabase string
-	RabbitMQURI      string
+	ApplicationPort      int
+	ApplicationName      string
+	ServiceName          string
+	Environment          string
+	AcledaAPIURL         string
+	AcledaSTGURL         string
+	AcledaUsername       string
+	AcledaPassword       string
+	AcledaAPIKey         string
+	AcledaMerchantID     string
+	AcledaLogin          string
+	AcledaRemotePassword string
+	AcledaTimeout        int // in milliseconds
+	RedisHost            string
+	RedisPort            int
+	RedisPassword        string
+	RedisDatabase        int
+	YugabyteHost         string
+	YugabytePort         int
+	YugabyteUsername     string
+	YugabytePassword     string
+	YugabyteDatabase     string
+	RabbitMQURI          string
 }
 
 func InitializeAppConfig() {
@@ -41,7 +44,10 @@ func InitializeAppConfig() {
 	AppConfig.AcledaAPIKey = viper.GetString("ACLEDA_API_KEY")
 	AppConfig.AcledaMerchantID = viper.GetString("ACLEDA_MERCHANT_ID")
 	AppConfig.AcledaLogin = viper.GetString("ACLEDA_REMOTE_LOGIN")
-	AppConfig.AcledaPassword = viper.GetString("ACLEDA_REMOTE_PASSWORD")
+	AppConfig.AcledaRemotePassword = viper.GetString("ACLEDA_REMOTE_PASSWORD")
+	AppConfig.AcledaSTGURL = viper.GetString("ACLEDA_STG_URL")
+	AppConfig.AcledaPassword = viper.GetString("ACLEDA_PASSWORD")
+	AppConfig.AcledaUsername = viper.GetString("ACLEDA_USERNAME")
 	AppConfig.AcledaTimeout = viper.GetInt("ACLEDA_TIMEOUT")
 	AppConfig.RedisHost = viper.GetString("REDIS_HOST")
 	AppConfig.RedisPort = viper.GetInt("REDIS_PORT")

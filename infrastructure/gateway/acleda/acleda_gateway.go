@@ -68,7 +68,7 @@ func NewAcledaGateway() *AcledaGateway {
 		apiKey:     configuration.AppConfig.AcledaAPIKey,
 		merchantID: configuration.AppConfig.AcledaMerchantID,
 		login:      configuration.AppConfig.AcledaLogin,
-		password:   configuration.AppConfig.AcledaPassword,
+		password:   configuration.AppConfig.AcledaRemotePassword,
 		httpClient: &http.Client{
 			Timeout: time.Duration(configuration.AppConfig.AcledaTimeout) * time.Millisecond,
 		},
@@ -210,6 +210,124 @@ func generateSignature(req OpenSessionRequest) string {
 	return configuration.AppConfig.AcledaAPIKey
 }
 
+// CreateStagingPayment creates a payment using Acleda staging API
+func (g *AcledaGateway) CreateStagingPayment(ctx context.Context, req *StagingPaymentRequest) (*StagingPaymentResponse, error) {
+	// Create request payload
+	requestData := map[string]interface{}{
+		"amount":               req.Amount,
+		"msisdn":               req.Msisdn,
+		"country":              req.Country,
+		"description":          req.Description,
+		"payment_method":       req.PaymentMethod,
+		"bank_code":            req.BankCode,
+		"ewallet_success_url":  req.EwalletSuccessURL,
+		"ewallet_failuure_url": req.EwalletFailureURL,
+		"ewallet_cancel_url":   req.EwalletCancelURL,
+		"va_customer_name":     req.VACustomerName,
+		"callback_url":         req.CallbackURL,
+		"email":                req.Email,
+		"username":             req.Username,
+		"return_url":           req.ReturnURL,
+		"currency":             req.Currency,
+		"transaction_id":       req.TransactionID,
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Use staging URL
+	stgURL := configuration.AppConfig.AcledaSTGURL
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, stgURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers with basic auth
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.SetBasicAuth(configuration.AppConfig.AcledaUsername, configuration.AppConfig.AcledaPassword)
+
+	resp, err := g.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("acleda staging api error: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse the response
+	var response map[string]interface{}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Extract data from response
+	data, ok := response["data"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response format: missing data field")
+	}
+
+	// Convert to response struct
+	result := &StagingPaymentResponse{
+		TransactionID: getString(data, "transaction_id", ""),
+		PaymentMethod: getString(data, "payment_method", ""),
+		Provider:      getString(data, "provider", ""),
+		Bank:          getString(data, "bank", ""),
+		PaymentLink:   getString(data, "payment_link", ""),
+		PaymentCode:   getString(data, "payment_code", ""),
+		Name:          getString(data, "name", ""),
+		Email:         getString(data, "email", ""),
+		Amount:        getFloat(data, "amount"),
+		Currency:      getString(data, "currency", ""),
+		Status:        getString(data, "status", ""),
+	}
+
+	return result, nil
+}
+
+// StagingPaymentRequest represents the request for Acleda staging payment
+type StagingPaymentRequest struct {
+	Amount            string `json:"amount"`
+	Msisdn            string `json:"msisdn"`
+	Country           string `json:"country"`
+	Description       string `json:"description"`
+	PaymentMethod     string `json:"payment_method"`
+	BankCode          string `json:"bank_code"`
+	EwalletSuccessURL string `json:"ewallet_success_url"`
+	EwalletFailureURL string `json:"ewallet_failuure_url"`
+	EwalletCancelURL  string `json:"ewallet_cancel_url"`
+	VACustomerName    string `json:"va_customer_name"`
+	CallbackURL       string `json:"callback_url"`
+	Email             string `json:"email"`
+	Username          string `json:"username"`
+	ReturnURL         string `json:"return_url"`
+	Currency          string `json:"currency"`
+	TransactionID     string `json:"transaction_id"`
+}
+
+// StagingPaymentResponse represents the response from Acleda staging payment
+type StagingPaymentResponse struct {
+	TransactionID string  `json:"transaction_id"`
+	PaymentMethod string  `json:"payment_method"`
+	Provider      string  `json:"provider"`
+	Bank          string  `json:"bank"`
+	PaymentLink   string  `json:"payment_link"`
+	PaymentCode   string  `json:"payment_code"`
+	Name          string  `json:"name"`
+	Email         string  `json:"email"`
+	Amount        float64 `json:"amount"`
+	Currency      string  `json:"currency"`
+	Status        string  `json:"status"`
+}
+
 // Request structures for OpenSession
 type OpenSessionRequest struct {
 	LoginID         string          `json:"loginId"`
@@ -254,6 +372,34 @@ type XTranDTO struct {
 	PurchaseType   int     `json:"purchaseType"`
 	SaveToken      int     `json:"savetoken"`
 	FeeAmount      float64 `json:"feeAmount"`
+}
+
+// Helper functions
+func getString(m map[string]interface{}, key, defaultValue string) string {
+	if val, ok := m[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return defaultValue
+}
+
+func getFloat(m map[string]interface{}, key string) float64 {
+	if val, ok := m[key]; ok {
+		switch v := val.(type) {
+		case float64:
+			return v
+		case float32:
+			return float64(v)
+		case int:
+			return float64(v)
+		case string:
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				return f
+			}
+		}
+	}
+	return 0
 }
 
 // Create implements PaymentGateway interface
@@ -319,16 +465,6 @@ func (g *AcledaGateway) Create(ctx context.Context, payload map[string]interface
 	}
 
 	return payment, nil
-}
-
-// Helper functions
-func getString(m map[string]interface{}, key, defaultValue string) string {
-	if val, ok := m[key]; ok {
-		if str, ok := val.(string); ok {
-			return str
-		}
-	}
-	return defaultValue
 }
 
 func parseFloat(s string) float64 {

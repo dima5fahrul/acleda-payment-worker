@@ -58,11 +58,20 @@ func main() {
 	// Initialize Yugabyte client wrapper
 	yugabyteClient := clients.NewYugabyteClient(database.YugabyteDBClient)
 
+	// Initialize services
+	acledaService := dependencies.ProvidePaymentAcledaService()
+	stagingService := dependencies.ProvideAcledaStagingService()
+
 	// Initialize Acleda controller
 	acledaController := controllers.NewAcledaController(
 		dependencies.ProvideAcledaGateway(),
-		dependencies.ProvidePaymentAcledaService(),
+		acledaService,
 		repositories.NewPaymentAcledaRepositoryYugabyteDB(yugabyteClient),
+	)
+
+	// Initialize Acleda Staging controller
+	acledaStagingController := controllers.NewAcledaStagingController(
+		stagingService,
 	)
 
 	// Register routes
@@ -74,6 +83,10 @@ func main() {
 	app.Post("/api/v1/acleda/payment-links", acledaController.CreatePaymentLink)
 	app.Get("/payment-page/acleda/:id", acledaController.PaymentPage)
 	app.Get("/api/v1/acleda/payments/:id/status", acledaController.GetPaymentStatus)
+
+	// Setup Acleda Staging controller routes
+	app.Post("/api/v2/payment/acleda", acledaStagingController.CreateStagingPayment)
+	app.Get("/api/v2/payment/acleda/:id/status", acledaStagingController.GetStagingPaymentStatus)
 
 	// Start server
 	port := strconv.Itoa(configuration.AppConfig.ApplicationPort)
